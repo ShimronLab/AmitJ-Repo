@@ -92,12 +92,12 @@ fig, axs = plt.subplots(1, 2, figsize=(12, 6))
 
 # Plot the Phantom Slice
 cax1 = axs[0].imshow(phantom_slice, cmap='gray')
-axs[0].set_title('Phantom Slice (Spatial Domain)')
+axs[0].set_title(f'Phantom PD map Slice {slice_index + 1} (Spatial Domain)')
 fig.colorbar(cax1, ax=axs[0])
 
 # Plot the K-space (magnitude spectrum)
 cax2 = axs[1].imshow(np.log(1 + magnitude_spectrum), cmap='gray')  # Log scale for better visibility
-axs[1].set_title('K-space (Frequency Domain)')
+axs[1].set_title(f'K-space of PD map Slice {slice_index + 1} (Frequency Domain)')
 fig.colorbar(cax2, ax=axs[1])
 
 # Adjust layout
@@ -105,6 +105,6 @@ plt.tight_layout()
 plt.show()
 
 # Save the figure
-fig.savefig(f'Figure2-Phantom and its kspace based on PD Map for slice {slice_index}.png')
+fig.savefig(f'Figure2-Phantom and its kspace based on PD Map for slice {slice_index + 1}.png')
 
 
