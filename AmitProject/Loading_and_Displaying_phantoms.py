@@ -1,7 +1,7 @@
 import MRzeroCore as mr0
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')  # This sets the backend
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
 # Load Phantom Maps
