@@ -1,15 +1,15 @@
 import MRzeroCore as mr0
 import numpy as np
-import matplotlib
-matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-
 # Load Phantom Maps
-filepath = "output\\brainweb\\subject04_3T.npz"
+filepath = "output\\brainweb\\\subject04_3T.npz"
 data = np.load(filepath)
+print(data.files)
 
 # Access each map
 PD_map = data['PD_map']
+print(PD_map.shape) #as an example
+
 T1_map = data['T1_map']
 T2_map = data['T2_map']
 T2dash_map = data['T2dash_map']
