@@ -18,7 +18,7 @@ Ny, Nx = 128, 128
 # Load phantom
 phantom = mr0.VoxelGridPhantom.brainweb("output/brainweb/subject05_3T.npz")
 phantom = phantom.interpolate(128, 128, 120).slices([60])
-data = phantom.build()
+data = phantom.build() #check
 recon_images = []
 T2_map = phantom.T2.squeeze()
 TE_init = 12e-3
