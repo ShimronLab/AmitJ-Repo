@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 import pypulseq as pp
 
-def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=64):
+def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False):
 #def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'tse_pypulseq.seq'):
     # ======
     # SETUP
@@ -21,16 +21,19 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         adc_dead_time=10e-6,
     )
 
+    if is_horizontal_pe:
+        fe = 'y'
+        pe = 'x'
+    else:
+        fe = 'x'
+        pe = 'y'
+
     seq = pp.Sequence(system)  # Create a new sequence object
-    fov = 256e-3  # Define FOV and resolution
-    # Nx, Ny = 128, 128
-    # n_echo = 1 # Number of echoes
     n_slices = 1
     rf_flip = 180  # Flip angle
     if isinstance(rf_flip, int):
         rf_flip = np.zeros(n_echo) + rf_flip
     slice_thickness = 5e-3
-    TE = 12e-3  # Echo time
     TR = 2000e-3  # Repetition time
 
     sampling_time = 6.4e-3
@@ -105,7 +108,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     k_width = Nx * delta_k
 
     gr_acq = pp.make_trapezoid(
-        channel='x',
+        channel=fe,
         system=system,
         flat_area=k_width,
         flat_time=readout_time,
@@ -114,7 +117,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
     adc = pp.make_adc(num_samples=Nx, duration=sampling_time, delay=system.adc_dead_time, system=system)
     gr_spr = pp.make_trapezoid(
-        channel='x',
+        channel=fe,
         system=system,
         area=gr_acq.area * fsp_r, #k_width
         duration=t_sp,
@@ -123,14 +126,31 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
     agr_spr = gr_spr.area
     agr_preph = gr_acq.area / 2 + agr_spr
-    gr_preph = pp.make_trapezoid(channel='x', system=system, area=agr_preph, duration=t_spex, rise_time=dG)
+    gr_preph = pp.make_trapezoid(channel=fe, system=system, area=agr_preph, duration=t_spex, rise_time=dG)
 
-    # Phase-encoding
+    # # Phase-encoding
+
     n_ex = math.floor(Ny / n_echo)
-    pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
-    if divmod(n_echo, 2)[1] == 0:
-        pe_steps = np.roll(pe_steps, [0, int(-np.round(n_ex / 2))])
-    pe_order = pe_steps.reshape((n_ex, n_echo), order='F').T
+
+    # original
+    # pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
+    # if divmod(n_echo, 2)[1] == 0:
+    #     pe_steps = np.roll(pe_steps, [0, int(-np.round(n_ex / 2))])
+    # pe_order = pe_steps.reshape((n_ex, n_echo), order='F').T
+
+    if pe_order_label=='TD': # Top-Down order
+        pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
+        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+    elif pe_order_label=='CO': # Center-Out order
+        center = n_echo * n_ex // 2
+        offsets = np.arange(center)
+        pe_steps = np.empty(n_echo * n_ex, dtype=int)
+        pe_steps[::2] = center + offsets  # even indices: 0, +1, +2, ...
+        pe_steps[1::2] = center - offsets - 1  # odd indices: -1, -2, -3, ...
+        pe_steps = pe_steps - center  # shift to be centered around 0
+
+        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+
     phase_areas = pe_order * delta_k
 
     # Split gradients and recombine into blocks
@@ -206,7 +226,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         ]
     )
     gr5_amp = np.array([0, gr_spr.amplitude, gr_spr.amplitude, gr_acq.amplitude])
-    gr5 = pp.make_extended_trapezoid(channel='x', times=gr5_times, amplitudes=gr5_amp)
+    gr5 = pp.make_extended_trapezoid(channel=fe, times=gr5_times, amplitudes=gr5_amp)
 
     # Variable | Purpose | What it connects
     # gr5 | Transition from spoiler → readout | 0 → gr_spr → gr_acq
@@ -215,7 +235,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
     gr6_times = np.array([0, readout_time])
     gr6_amp = np.array([gr_acq.amplitude, gr_acq.amplitude])
-    gr6 = pp.make_extended_trapezoid(channel='x', times=gr6_times, amplitudes=gr6_amp)
+    gr6 = pp.make_extended_trapezoid(channel=fe, times=gr6_times, amplitudes=gr6_amp)
 
     gr7_times = np.array(
         [
@@ -226,7 +246,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         ]
     )
     gr7_amp = np.array([gr_acq.amplitude, gr_spr.amplitude, gr_spr.amplitude, 0])
-    gr7 = pp.make_extended_trapezoid(channel='x', times=gr7_times, amplitudes=gr7_amp)
+    gr7 = pp.make_extended_trapezoid(channel=fe, times=gr7_times, amplitudes=gr7_amp)
 
     # Gradient | Role | Connects From → To
     # gr6 | Main readout gradient | Applied during ADC
@@ -269,14 +289,14 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
                     phase_area = 0.0  # 0.0 and not 0 because -phase_area should successfully result in negative zero
 
                 gp_pre = pp.make_trapezoid( # Pre-phasing gradient (before readout)
-                    channel='y',
+                    channel=pe,
                     system=system,
                     area=phase_area,
                     duration=t_sp,
                     rise_time=dG,
                 )
                 gp_rew = pp.make_trapezoid( # Rewinder gradient (after readout) opposite sign because it cancels the phase shift
-                    channel='y',
+                    channel=pe,
                     system=system,
                     area=-phase_area,
                     duration=t_sp,
@@ -323,4 +343,4 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
 
 if __name__ == '__main__':
-    TSE_seq(plot=False, write_seq=True, seq_filename='tse_seq_horizontal_necho16_128.seq',n_echo=16, Ny=64, Nx=64)
+    TSE_seq(plot=True, write_seq=False, seq_filename='TSE_SEQ_test_TD_new.seq',n_echo=32, Ny=128, Nx=128,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False)
