@@ -7,3 +7,4 @@ data/
 *.seq
 *.pt
 *.gif
+*.npz

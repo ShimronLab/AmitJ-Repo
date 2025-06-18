@@ -43,8 +43,10 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
     # Compute and execute the simulation graph
     graph = mr0.compute_graph(seq, data, 200, 1e-3)
     signal = mr0.execute_graph(graph, seq, data)
-
-    signal = signal.view(n_ex, n_echo, Nx)
+    if is_horizontal_pe:
+        signal = signal.view(n_ex, n_echo, Ny)
+    else:
+        signal = signal.view(n_ex, n_echo, Nx)
 
     # # Build pe_order exactly as in TSE_seq.py
     #old
@@ -83,7 +85,7 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
                 if is_horizontal_pe:
                     kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
                     if 0 <= kx < Nx:
-                        ksp[kx, :] = signal[ex, e, :]
+                        ksp[:, kx] = signal[ex, e, :]
                 else: #original vertical
                     ky = int(round(ky_f / delta_k)) + Ny // 2 # Convert to array index
                     if 0 <= ky < Ny:
@@ -97,7 +99,7 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
                 if is_horizontal_pe:
                     kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
                     if 0 <= kx < Nx and not filled_lines[kx]:
-                        ksp[kx, :] = signal[ex, e, :]
+                        ksp[:, kx] = signal[ex, e, :]
                         filled_lines[kx] = True
                 else:
                     ky = int(round(phase_areas[e, ex] / delta_k)) + Ny // 2
@@ -106,7 +108,10 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
                         filled_lines[ky] = True
 
     # Reconstruct using ifft
-    reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp)))
+    if is_horizontal_pe:
+        reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp.T)))
+    else:
+        reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp)))
 
     # Save image
     fig_img = plt.figure()
@@ -118,20 +123,17 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
         f"TE = {TE * 1e3:.0f} ms\n"
         f"TR = 2 s\n"
         f"Turbo Factor = {n_echo}\n"
-        #f"Orientation = {'Horizontal' if is_horizontal_pe else 'Vertical'}"
+        f"PE_order = {pe_order_label}"
     )
 
-    # Get image dimensions
-    height, width = reco.abs().numpy().shape
-
-    # Add text in top-right corner (adjust offset for padding)
+    # Add text in top-left corner (adjust offset for padding)
     plt.text(
-        2,  # X near right edge
+        2,  # X near left edge
         5,  # Y near top
         info,
         fontsize=12,
         color='white',
-        ha='left',  # align text to the right edge
+        ha='left',  # align text to the left edge
         va='top'  # align top of text block to y=5
     )
 
@@ -144,7 +146,8 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
     fig_img.savefig(img_path)
     plt.close(fig_img)
     torch.save(ksp, f'ksp_{seq_filename}.pt')
+    np.savez(os.path.join(output_dir, f"reco_TF{n_echo}_TE{int(TE * 1e3)}ms_{pe_order_label}.npz"), image=reco.abs().numpy())
 
     return reco,ksp
 
-recon, ksp = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=12e-3, n_echo= 32, fov=256e-3, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=True,pe_order_label='TD',is_horizontal_pe = True)
+recon, ksp = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=48e-3, n_echo= 32, fov=256e-3, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=True,pe_order_label='TD',is_horizontal_pe = False)
