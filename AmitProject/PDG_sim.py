@@ -19,7 +19,7 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
     # Outputs:
     # Reconstructed image using fft: recon
     # kspace: ksp
-
+    os.makedirs('data',exist_ok=True)
     os.makedirs(output_dir, exist_ok=True)
 
     phantom = mr0.VoxelGridPhantom.brainweb(filepath)
@@ -35,7 +35,7 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
         plt.figure(figsize=(6, 6))
         seq.plot_kspace_trajectory()
         traj_path = os.path.join(output_dir, f"kspace_traj_TE{int(TE * 1e3)}ms.png")
-        plt.savefig(traj_path)
+        # plt.savefig(traj_path)
         plt.close()
         
     n_ex = Ny // n_echo
@@ -143,7 +143,8 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
     img_path = os.path.join(output_dir, f"{title}.png")
     fig_img.savefig(img_path)
     plt.close(fig_img)
+    torch.save(ksp, f'ksp_{seq_filename}.pt')
 
     return reco,ksp
 
-recon, ksp = PDG_sim(filepath="output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=12e-3, n_echo= 32, fov=256e-3, output_dir='TSE_horizontal_CO_n_echo_32_te12', seq_filename='TSE_horizontal_seq_TE12ms_tf32_td_new.seq', plot_kspace_traj=True,pe_order_label='CO',is_horizontal_pe = True)
+recon, ksp = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=12e-3, n_echo= 32, fov=256e-3, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=True,pe_order_label='TD',is_horizontal_pe = True)
