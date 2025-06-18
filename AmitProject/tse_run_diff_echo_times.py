@@ -6,8 +6,11 @@ import MRzeroCore as mr0
 from TSE_seq_applied_to_PDG_sim import TSE_seq
 
 from t2decay import T2_map
-
-output_dir = "tse_sim_diff_te_outputs"
+flag = "TSE"
+if flag == "TSE":
+    output_dir = "tse_sim_diff_te_outputs_tf8"
+elif flag == "SE":
+    output_dir = "se_sim_diff_te_outputs"
 os.makedirs(output_dir, exist_ok=True)
 
 # Settings
@@ -21,11 +24,13 @@ phantom = mr0.VoxelGridPhantom.brainweb("output/brainweb/subject05_3T.npz")
 phantom = phantom.interpolate(128, 128, 120).slices([60])
 data = phantom.build()
 recon_images = []
-T2_map = phantom.T2.squeeze()
-n_echo = 16  # fixed number of echoes
+n_echo = 8  # fixed number of echoes
 
 for TE in TE_values:
-    seq_filename = f"TSE_seq_TE{int(TE*1e3)}ms.seq"
+    if flag == "SE":
+        seq_filename = f"SE_seq_TE{int(TE*1e3)}ms.seq"
+    elif flag == "TSE":
+        seq_filename = f"TSE_seq_TE{int(TE*1e3)}ms_8tf.seq"
     if not os.path.exists(seq_filename):
         TSE_seq(plot=False, write_seq=True, seq_filename=seq_filename, TE=TE, n_echo=n_echo, Ny=Ny, Nx=Nx)
     seq = mr0.Sequence.import_file(seq_filename)
@@ -60,9 +65,7 @@ for TE in TE_values:
             ky_f = phase_areas[e, ex]
             ky = int(round(ky_f / delta_k)) + Ny // 2
             if 0 <= ky < Ny:
-                t = TE + e * TE_base  # decay from time t = TE + e*TE_base
-                # decay_factor = torch.exp(-t / T2_map[ky, :])
-                kspace[ky, :] = signal[ex, e, :]# * decay_factor
+                kspace[ky, :] = signal[ex, e, :]
 
     # Reconstruct
     reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(kspace)))
@@ -78,6 +81,9 @@ for TE in TE_values:
     fig_img.savefig(img_path)
     plt.close(fig_img)
 
+    plt.plot(signal[ex,e,Nx//2],e)
+    plt.title("verify visual decay")
+
     recon_images.append((TE, reco.abs().numpy()))
 
 # Plot all recon images in a single row
@@ -91,6 +97,6 @@ for idx, (TE, img) in enumerate(recon_images):
     ax.axis("off")
 
 plt.tight_layout()
-plt.suptitle(f"Reconstructed Images for Different TEs, Turbo Factor = 16, Number Of Shots = {Ny//n_echo} ", fontsize=16)
+plt.suptitle(f"Reconstructed Images for Different TEs, Turbo Factor = {n_echo}, Number Of Shots = {Ny//n_echo}, TR = 2 [sec]", fontsize=16, )
 plt.savefig(os.path.join(output_dir, "recon_grid_summary.png"))
 plt.show()

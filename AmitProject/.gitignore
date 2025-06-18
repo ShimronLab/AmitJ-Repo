@@ -1,0 +1,9 @@
+# Ignore the data folder
+data/
+
+# Optional: ignore all PNG and JPG images anywhere
+*.png
+*.jpg
+*.seq
+*.pt
+*.gif

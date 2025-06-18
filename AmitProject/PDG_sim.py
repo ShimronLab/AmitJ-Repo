@@ -26,8 +26,10 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
     phantom = phantom.interpolate(Nx, Ny, (phantom.PD).shape[2]).slices([(phantom.PD).shape[2]//2]) # Choosing the middle slice
     data = phantom.build()
 
-    if not os.path.exists(seq_filename):
-        TSE_seq(plot=True, write_seq=True, seq_filename=seq_filename, TE=TE, n_echo=n_echo, Ny=Ny, Nx=Nx,fov=fov,pe_order_label=pe_order_label,is_horizontal_pe = False)
+    if os.path.exists(seq_filename):
+        print("seq file already exists, overriding it")
+    TSE_seq(plot=True, write_seq=True, seq_filename=seq_filename, TE=TE, n_echo=n_echo, Ny=Ny, Nx=Nx,fov=fov,pe_order_label=pe_order_label,is_horizontal_pe = False)
+
     seq = mr0.Sequence.import_file(seq_filename)
     if plot_kspace_traj:
         plt.figure(figsize=(6, 6))
@@ -74,18 +76,34 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
         ksp = torch.zeros(Ny, Nx, dtype=signal.dtype)
 
     # Fill in k-space line-by-line
-    for ex in range(n_ex):
-        for e in range(n_echo):
-            ky_f = phase_areas[e, ex] # Physical phase encoding value
-            if is_horizontal_pe:
-                kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
-                if 0 <= kx < Nx:
-                    ksp[kx, :] = signal[ex, e, :]
-            else: #original vertical
-                ky = int(round(ky_f / delta_k)) + Ny // 2 # Convert to array index
-                if 0 <= ky < Ny:
-                    #  Each (ex, e) corresponds to one k-space line at a certain ky-position
-                    ksp[ky, :] = signal[ex, e, :]
+    if pe_order_label=='TD':
+        for ex in range(n_ex):
+            for e in range(n_echo):
+                ky_f = phase_areas[e, ex] # Physical phase encoding value
+                if is_horizontal_pe:
+                    kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
+                    if 0 <= kx < Nx:
+                        ksp[kx, :] = signal[ex, e, :]
+                else: #original vertical
+                    ky = int(round(ky_f / delta_k)) + Ny // 2 # Convert to array index
+                    if 0 <= ky < Ny:
+                        #  Each (ex, e) corresponds to one k-space line at a certain ky-position
+                        ksp[ky, :] = signal[ex, e, :]
+    elif pe_order_label=='CO':
+        filled_lines = np.zeros(Nx if is_horizontal_pe else Ny, dtype=bool)
+
+        for ex in range(n_ex):
+            for e in range(n_echo):
+                if is_horizontal_pe:
+                    kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
+                    if 0 <= kx < Nx and not filled_lines[kx]:
+                        ksp[kx, :] = signal[ex, e, :]
+                        filled_lines[kx] = True
+                else:
+                    ky = int(round(phase_areas[e, ex] / delta_k)) + Ny // 2
+                    if 0 <= ky < Ny and not filled_lines[ky]:
+                        ksp[ky, :] = signal[ex, e, :]
+                        filled_lines[ky] = True
 
     # Reconstruct using ifft
     reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp)))
@@ -128,4 +146,4 @@ def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_ks
 
     return reco,ksp
 
-recon, ksp = PDG_sim(filepath="output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=12e-3, n_echo= 32, fov=256e-3, output_dir='TSE_horizontal_TD_n_echo_32_te12', seq_filename='TSE_vertical_seq_TE12ms_tf32_TD_fixed.seq', plot_kspace_traj=True,pe_order_label='TD',is_horizontal_pe = False)
+recon, ksp = PDG_sim(filepath="output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=12e-3, n_echo= 32, fov=256e-3, output_dir='TSE_horizontal_CO_n_echo_32_te12', seq_filename='TSE_horizontal_seq_TE12ms_tf32_td_new.seq', plot_kspace_traj=True,pe_order_label='CO',is_horizontal_pe = True)
