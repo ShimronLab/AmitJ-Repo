@@ -50,7 +50,7 @@ n_keep_h = Nx // R
 sampled_cols = np.random.choice(Nx, n_keep_h, replace=False)
 
 mask_h = np.zeros_like(ksp_h, dtype=bool)
-mask_h[sampled_cols,:] = True #mask each sampled col as 1
+mask_h[:,sampled_cols] = True #mask each sampled col as 1
 
 undersampled_ksp_h = ksp_h.clone()
 undersampled_ksp_h[~mask_h] = 0 #when mask_h= 0 put 0 and otherwise keep the line
@@ -60,28 +60,32 @@ n_keep_v = Ny//R
 sampled_rows = np.random.choice(Ny, n_keep_v, replace=False)
 
 mask_v = np.zeros_like(ksp_v, dtype=bool)
-mask_v[sampled_rows] = True
+mask_v[sampled_rows,:] = True
 
 undersampled_ksp_v = ksp_v.clone()
 undersampled_ksp_v[~mask_v] = 0
 
+pe_order_label_h = 'LeftRight' if pe_order_label == 'TD' and horizontal else 'CenterOut'
+
+pe_order_label_v = 'TopDown' if pe_order_label == 'TD' else 'CenterOut'
+
 # Plot Horizontal - ksp_h | undersampled_ksp_h | mask_h
 plt.figure(figsize=(12, 4))
-plt.suptitle("log1p(abs(ksp)")
+plt.suptitle(f"log1p(abs(ksp) {pe_order_label_h} with R={R} - (Horizontal PE)")
 
 plt.subplot(1, 3, 1)
 plt.imshow(np.log1p(ksp_h.abs().numpy()), cmap='gray')
-plt.title("Full k-space (Horizontal PE)")
+plt.title("Full k-space")
 plt.axis('off')
 
 plt.subplot(1, 3, 2)
 plt.imshow(np.log1p(undersampled_ksp_h.abs().numpy()), cmap='gray')
-plt.title("Undersampled k-space (Horizontal PE)")
+plt.title("Undersampled k-space")
 plt.axis('off')
 
 plt.subplot(1, 3, 3)
 plt.imshow(mask_h, cmap='gray')
-plt.title("Sampling Mask (Horizontal PE)")
+plt.title("Sampling Mask")
 plt.axis('off')
 
 plt.tight_layout()
@@ -89,21 +93,21 @@ plt.show()
 
 # Plot Vertical - ksp_v | undersampled_ksp_v | mask_v
 plt.figure(figsize=(12, 4))
-plt.suptitle("log1p(abs(ksp)")
+plt.suptitle(f"log1p(abs(ksp) {pe_order_label_v} with R={R} - (Vertical PE)")
 
 plt.subplot(1, 3, 1)
 plt.imshow(np.log1p(ksp_v.abs().numpy()), cmap='gray')
-plt.title("Full k-space (Vertical PE)")
+plt.title("Full k-space")
 plt.axis('off')
 
 plt.subplot(1, 3, 2)
 plt.imshow(np.log1p(undersampled_ksp_v.abs().numpy()), cmap='gray')
-plt.title("Undersampled k-space (Vertical PE)")
+plt.title("Undersampled k-space")
 plt.axis('off')
 
 plt.subplot(1, 3, 3)
 plt.imshow(mask_v, cmap='gray')
-plt.title("Sampling Mask (Vertical PE)")
+plt.title("Sampling Mask")
 plt.axis('off')
 
 plt.tight_layout()
