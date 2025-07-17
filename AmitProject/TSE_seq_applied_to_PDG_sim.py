@@ -3,7 +3,8 @@ import warnings
 import numpy as np
 import pypulseq as pp
 
-def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False):
+
+def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False, R=1):
 #def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'tse_pypulseq.seq'):
     # ======
     # SETUP
@@ -34,7 +35,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     if isinstance(rf_flip, int):
         rf_flip = np.zeros(n_echo) + rf_flip
     slice_thickness = 5e-3
-    TR = 2000e-3  # Repetition time
+    #TR = 2000e-3  # Repetition time original in code - changed later to fit with TE_train
 
     sampling_time = 6.4e-3
     readout_time = sampling_time + 2 * system.adc_dead_time
@@ -129,8 +130,9 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     gr_preph = pp.make_trapezoid(channel=fe, system=system, area=agr_preph, duration=t_spex, rise_time=dG)
 
     # # Phase-encoding
+    Ny_acq = Ny // R
+    n_ex = math.floor(Ny_acq / n_echo)
 
-    n_ex = math.floor(Ny / n_echo)
 
     # original
     # pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
@@ -142,13 +144,13 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
         pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
     elif pe_order_label=='CO': # Center-Out order
-        center = n_echo * n_ex // 2
-        offsets = np.arange(center)
-        pe_steps = np.empty(n_echo * n_ex, dtype=int)
-        pe_steps[::2] = center + offsets  # even indices: 0, +1, +2, ...
-        pe_steps[1::2] = center - offsets - 1  # odd indices: -1, -2, -3, ...
-        pe_steps = pe_steps - center  # shift to be centered around 0
-
+        # fit sequence to current needs - RARE paper
+        half = Ny_acq // 2
+        offsets = np.arange(1, half + 1) * 2
+        pe_steps = np.empty(Ny_acq, dtype=int)
+        pe_steps[0] = 0
+        pe_steps[1::2] = -offsets
+        pe_steps[2::2] = offsets[:-1]
         pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
 
     phase_areas = pe_order * delta_k
@@ -258,6 +260,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     t_end = pp.calc_duration(gs4) + pp.calc_duration(gs5)
 
     TE_train = t_ex + n_echo * t_ref + t_end
+    TR = TE_train + 0.1
     TR_fill = (TR - n_slices * TE_train) / n_slices
     # Round to gradient raster
     TR_fill = system.grad_raster_time * np.round(TR_fill / system.grad_raster_time)
@@ -343,4 +346,4 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
 
 if __name__ == '__main__':
-    TSE_seq(plot=True, write_seq=False, seq_filename='TSE_SEQ_test_TD_new.seq',n_echo=32, Ny=128, Nx=128,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False)
+    TSE_seq(plot=True, write_seq=True, seq_filename='TSE_SEQ_CO_R2_TE96_TF128.seq',n_echo=64, Ny=128, Nx=128,TE = 96e-3,fov=200e-3,pe_order_label='CO',is_horizontal_pe = False, R = 2)
