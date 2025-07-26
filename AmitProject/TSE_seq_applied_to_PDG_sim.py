@@ -4,7 +4,7 @@ import numpy as np
 import pypulseq as pp
 
 
-def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False, R=1):
+def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TE = 12e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False, R=1,esp=None):
 #def main(plot: bool = False, write_seq: bool = False, seq_filename: str = 'tse_pypulseq.seq'):
     # ======
     # SETUP
@@ -34,19 +34,25 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     rf_flip = 180  # Flip angle
     if isinstance(rf_flip, int):
         rf_flip = np.zeros(n_echo) + rf_flip
-    slice_thickness = 5e-3
+    slice_thickness = 8e-3
     #TR = 2000e-3  # Repetition time original in code - changed later to fit with TE_train
 
-    sampling_time = 6.4e-3
+    # sampling_time = system.adc_raster_time * np.round(sampling_time / system.adc_raster_time)
+    sampling_time = 4.8e-3
+
     readout_time = sampling_time + 2 * system.adc_dead_time
     t_ex = 2.5e-3
     t_exwd = t_ex + system.rf_ringdown_time + system.rf_dead_time
     t_ref = 2e-3
     t_refwd = t_ref + system.rf_ringdown_time + system.rf_dead_time
-    t_sp = 0.5 * (TE - readout_time - t_refwd)
-    t_spex = 0.5 * (TE - t_exwd - t_refwd)
     fsp_r = 1
     fsp_s = 0.5
+    if esp != None:
+        t_sp = 0.5 * (esp - readout_time - t_refwd)
+        t_spex = 0.5 * (esp - t_exwd - t_refwd)
+    else:
+        t_sp = 0.5 * (TE - readout_time - t_refwd)
+        t_spex = 0.5 * (TE - t_exwd - t_refwd)
 
     rf_ex_phase = np.pi / 2
     rf_ref_phase = 0
@@ -129,10 +135,10 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     agr_preph = gr_acq.area / 2 + agr_spr
     gr_preph = pp.make_trapezoid(channel=fe, system=system, area=agr_preph, duration=t_spex, rise_time=dG)
 
+    shift = 'roll'
     # # Phase-encoding
     Ny_acq = Ny // R
     n_ex = math.floor(Ny_acq / n_echo)
-
 
     # original
     # pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
@@ -144,14 +150,48 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
         pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
     elif pe_order_label=='CO': # Center-Out order
-        # fit sequence to current needs - RARE paper
-        half = Ny_acq // 2
-        offsets = np.arange(1, half + 1) * 2
-        pe_steps = np.empty(Ny_acq, dtype=int)
-        pe_steps[0] = 0
-        pe_steps[1::2] = -offsets
-        pe_steps[2::2] = offsets[:-1]
-        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+        if R==2:
+            if esp != None:
+                target_echo_index = int(TE // esp)
+                half = Ny_acq // 2
+                offsets = np.arange(1, half + 1) * 2
+                pe_steps = np.empty(Ny_acq, dtype=int)
+                pe_steps[0] = 0
+                pe_steps[1::2] = -offsets
+                pe_steps[2::2] = offsets[:-1]
+                pe_steps_shifted = np.roll(pe_steps,target_echo_index)
+                pe_order = pe_steps_shifted.reshape((n_echo, n_ex), order='C')
+            else:
+                half = Ny_acq // 2
+                offsets = np.arange(1, half + 1) * 2
+                pe_steps = np.empty(Ny_acq, dtype=int)
+                pe_steps[0] = 0
+                pe_steps[1::2] = -offsets
+                pe_steps[2::2] = offsets[:-1]
+                pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+        elif R==1:
+            if esp != None:
+                target_echo_index = int(TE//esp) - 1
+                half = Ny // 2
+                offsets = np.arange(1, half + 1)
+                pe_steps = np.empty(Ny, dtype=int)
+                pe_steps[0] = 0
+                pe_steps[1::2] = -offsets
+                pe_steps[2::2] = offsets[:-1]
+                if shift == 'roll':
+                    pe_steps_shifted = np.roll(pe_steps,target_echo_index)
+                elif shift == 'flip':
+                    pe_steps_shifted = pe_steps.copy()
+                    pe_steps_shifted[:target_echo_index] = pe_steps_shifted[:target_echo_index][::-1]
+                pe_order = pe_steps_shifted.reshape((n_echo, n_ex), order='C')
+            else:
+                half = Ny // 2
+                offsets = np.arange(1, half+1)
+                pe_steps = np.empty(Ny, dtype=int)
+                pe_steps[0] = 0
+                pe_steps[1::2] = -offsets
+                pe_steps[2::2] = offsets[:-1]
+                pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
 
     phase_areas = pe_order * delta_k
 
@@ -233,8 +273,6 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     # Variable | Purpose | What it connects
     # gr5 | Transition from spoiler → readout | 0 → gr_spr → gr_acq
 
-
-
     gr6_times = np.array([0, readout_time])
     gr6_amp = np.array([gr_acq.amplitude, gr_acq.amplitude])
     gr6 = pp.make_extended_trapezoid(channel=fe, times=gr6_times, amplitudes=gr6_amp)
@@ -260,6 +298,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     t_end = pp.calc_duration(gs4) + pp.calc_duration(gs5)
 
     TE_train = t_ex + n_echo * t_ref + t_end
+    # print(f"TE_train duration: {TE_train:.3f} seconds")
     TR = TE_train + 0.1
     TR_fill = (TR - n_slices * TE_train) / n_slices
     # Round to gradient raster
@@ -329,12 +368,14 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
         print('Timing check failed. Error listing follows:')
         [print(e) for e in error_report]
 
+
     # ======
     # VISUALIZATION
     # ======
     if plot:
         # seq.plot(time_range=(1.9, 2.3))
         seq.plot()
+        #seq.plot(time_range=[TR-0.1, 2*TR+0.1])
 
     # =========
     # WRITE .SEQ
@@ -346,4 +387,4 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
 
 if __name__ == '__main__':
-    TSE_seq(plot=True, write_seq=True, seq_filename='TSE_SEQ_CO_R2_TE96_TF128.seq',n_echo=64, Ny=128, Nx=128,TE = 96e-3,fov=200e-3,pe_order_label='CO',is_horizontal_pe = False, R = 2)
+    TSE_seq(plot=True, write_seq=True, seq_filename='TSE_SEQ_CO_R1_TE96MS_TF128_ESP12ms_roll.seq',n_echo=128, Ny=128, Nx=128,TE = 96e-3,fov=200e-3,pe_order_label='CO',is_horizontal_pe = False, R = 1,esp=12e-3)
