@@ -7,4 +7,9 @@ data/
 *.seq
 *.pt
 *.gif
-*.npz
+*.npzAmitProject/NEW_RARE.py
+AmitProject/RARE_seq_gen.py
+AmitProject/test_sim.py
+NEW_RARE.py
+RARE_seq_gen.py
+test_sim.py
