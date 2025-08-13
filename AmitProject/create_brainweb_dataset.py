@@ -3,12 +3,9 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import MRzeroCore as mr0
-import sigpy.mri as mr
-import time
 
 
-
-# Selects the 70 slices with the most tissue (least zeros)
+# Selects the 70 slices with the most tissue (the least zeros)
 def get_best_slices(PD_volume, num_slices=70):
     non_zero_counts = [(i, (PD_volume[:, :, i] > 0).sum()) for i in range(PD_volume.shape[2])]
     sorted_by_tissue = sorted(non_zero_counts, key=lambda x: -x[1]) # sort by the second value in the tuple in descending order
@@ -22,60 +19,20 @@ def recon_func(signal, Nx, Ny, Ny_acq):
     n_echo = signal.shape[1]
 
     kspace = torch.zeros((Ny, Nx), dtype=signal.dtype)
-    if Ny//Ny_acq == 2:
-        center = Ny // 2
-        acquired_lines = [center]
-        offsets = np.arange(2, Ny, 2)
-        for offset in offsets:
-            up = center + offset
-            down = center - offset
-            if up < Ny:
-                acquired_lines.append(up)
-            if down >= 0:
-                acquired_lines.append(down)
-        acquired_lines = acquired_lines[:Ny_acq]
-
-    elif Ny//Ny_acq == 1:
-        shift = 'roll' #or roll
-        esp = 12e-3
-        TE = 96e-3
-        target_echo_index = int(TE // esp)
-        center = Ny // 2
-        acquired_lines = [center]
-        offsets = np.arange(1, Ny+1)
-        for offset in offsets:
-            up = center + offset
-            down = center - offset
-            if up < Ny:
-                acquired_lines.append(up)
-            if down >= 0:
-                acquired_lines.append(down)
-        acquired_lines = acquired_lines[:Ny_acq]
-        acquired_lines_shifted = acquired_lines.copy()
-        if shift == 'roll':
-            acquired_lines_shifted = np.roll(acquired_lines_shifted, target_echo_index)
-        elif shift == 'flip':
-            acquired_lines_shifted[:target_echo_index] = acquired_lines_shifted[:target_echo_index][::-1]
-
-    if len(acquired_lines_shifted) != n_ex * n_echo:
-        raise ValueError(f"Mismatch: len(acquired_lines)={len(acquired_lines_shifted)} vs expected={n_ex * n_echo}")
-
-    if shift == 'roll':
-        signal = signal.view(-1, signal.shape[-1])  # (n_ex * n_echo, Nx)
-        signal = torch.roll(signal, shifts=-target_echo_index, dims=0)  # Shift echo axis
-        signal = signal.view(n_ex, n_echo, -1)
-    elif shift == 'flip':
-        signal = signal.view(-1, signal.shape[-1])
-        signal[:target_echo_index] = torch.flip(signal[:target_echo_index], dims=[0])
-        signal = signal.view(n_ex, n_echo, -1)
+    pe_order = np.load('pe_order_used.npy')  # shape (n_echo, n_ex)
+    pe_order_flat = pe_order.flatten().astype(np.int64)
+    if len(pe_order_flat) != n_ex * n_echo:
+        raise ValueError("Mismatch between signal size and PE ordering")
 
     for idx in range(n_ex * n_echo):
-        ky = acquired_lines_shifted[idx]
+        ky = pe_order_flat[idx]+Ny//2
         ex = idx // n_echo
         e = idx % n_echo
         if 0 <= ky < Ny:
             kspace[ky, :] = signal[ex, e, :]
 
+    filled_lines = (kspace.abs().sum(dim=1) > 0).sum()
+    print(f"Filled lines: {filled_lines}")
 
     reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(kspace)))
     return reco, kspace
@@ -83,25 +40,9 @@ def recon_func(signal, Nx, Ny, Ny_acq):
 # Executes MRzero simulation for a slice using a .seq file
 def PDG_sim(phantom_slice, seq, Nx, Ny, n_echo, Ny_acq):
     data = phantom_slice.build()
-    #start_time = time.time()
-    graph = mr0.compute_graph(seq, data, 200, 1e-4)
-    signal, mag_adc = mr0.execute_graph(graph, seq, data,return_mag_adc=True,min_emitted_signal=1e-4, min_latent_signal=1e-4)
-    #end_time = time.time()
-    #print(f"Elapsed time: {end_time - start_time:.3f} seconds")
 
-    # magnitudes = []
-    # for rep in mag_adc:
-    #    for echo in rep:
-    #     mag = echo.abs().mean().item()  # mean magnitude across image
-    #     magnitudes.append(mag)
-    #
-    # import matplotlib.pyplot as plt
-    # plt.plot(magnitudes, 'o-')
-    # plt.xlabel("Echo index")
-    # plt.ylabel("Mean |Mxy| at ADC")
-    # plt.title("Measured transverse magnetization per ADC, threshold = 1e-3 (default)")
-    # plt.grid(True)
-    # plt.show()
+    graph = mr0.compute_graph(seq, data, 200, 1e-5)
+    signal, mag_adc = mr0.execute_graph(graph, seq, data,return_mag_adc=True,min_emitted_signal=1e-5, min_latent_signal=1e-5)
 
     # Calculate number of excitations n_ex
     total_adc = signal.numel() #lists all elements
@@ -138,7 +79,7 @@ def prepare_dirs(base_dir):
     return root
 
 
-# Helper to construct full paths for saving
+# Construct full paths for saving
 def get_output_paths(base_dir, subset, dtype, role):
     return os.path.join(base_dir, f"{subset}_{dtype}", f"{subset}_{dtype}_{role}")
 
@@ -172,7 +113,7 @@ def generate_dataset(data_dir, seq_path, output_root, Nx=64, Ny=64, TE=60e-3, fo
         for slice_idx in best_slices:
             phantom_slice = phantom.slices([slice_idx])
 
-            # Simulate RARE image and k-space
+            # Simulate TSE image and k-space
             reco, kspace = PDG_sim(phantom_slice, seq, Nx, Ny, n_echo, Ny_acq)
 
             # Save input tensor and image
@@ -184,20 +125,11 @@ def generate_dataset(data_dir, seq_path, output_root, Nx=64, Ny=64, TE=60e-3, fo
             ksp_dir = os.path.join(base_dir, f"{subset}_tensor", f"{subset}_tensor_ksp")
             torch.save(kspace, os.path.join(ksp_dir, f"ksp_{subj_id}_slice_{slice_idx:02d}.pt"))
 
-            # Save target tensor and image (PD map)
-            pd = phantom_slice.PD[0, :, :]
-            t2 = phantom_slice.T2[0, :, :]
-            gt = pd * np.exp(-TE / (t2 + 1e-8))
-            tensor_target_dir = get_output_paths(base_dir, subset, "tensor", "target")
-            image_target_dir = get_output_paths(base_dir, subset, "im", "target")
-            save_image_and_tensor(torch.tensor(gt), tensor_target_dir, image_target_dir, subj_id, slice_idx)
-
         print(f"Done {subj_id}, saved to {subset} set")
 
     print("Dataset generation complete.")
 
-# Usage example:
 data_dir = os.path.expanduser("~/AmitProject/data/brainweb")
-seq_path = os.path.expanduser("~/AmitProject/TSE_SEQ_CO_R1_TE96MS_TF128_ESP12ms_roll.seq")
+seq_path = os.path.expanduser("~/AmitProject/TSE_1shot_FOV220mm_128res_TEeff96_CO_flip_shifted.seq")
 output_root = os.path.expanduser("~/AmitProject")
 generate_dataset(data_dir=data_dir, seq_path=seq_path, output_root=output_root,Nx=128, Ny=128,TE=96e-3,n_echo=128, fov= 200e-3, R=1)
