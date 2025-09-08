@@ -25,7 +25,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     sequence file
     pe_order - for later use in simulation
     """
-    
+
     # ======
     # SETUP
     # ======

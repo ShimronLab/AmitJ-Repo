@@ -186,4 +186,4 @@ def generate_dataset(data_dir, seq_path, output_root, Nx=64, Ny=64, TE=60e-3, fo
 data_dir = os.path.expanduser("~/AmitProject/data/brainweb")
 seq_path = os.path.expanduser("~/AmitProject/TSE_ETL32_TEeff96ms_ESP12ms_fov220_interleaved_co_TR4s.seq")
 output_root = os.path.expanduser("~/AmitProject")
-generate_dataset(data_dir=data_dir, seq_path=seq_path, output_root=output_root,Nx=128, Ny=128,TE=120e-3,n_echo=32, fov= 200e-3, R=1)
+generate_dataset(data_dir=data_dir, seq_path=seq_path, output_root=output_root,Nx=128, Ny=128,TE=96e-3,n_echo=32, fov= 200e-3, R=1)
