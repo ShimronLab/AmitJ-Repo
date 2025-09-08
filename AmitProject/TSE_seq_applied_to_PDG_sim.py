@@ -3,8 +3,29 @@ import warnings
 import numpy as np
 import pypulseq as pp
 
+def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=64,TEeff = 96e-3,fov=256e-3,pe_order_label='TD',direction='vertical', R=1,TE1=12e-3,TR=2,shift=False):
+    """
+    The goal of this function is to create a TSE sequence file to run MRzero simulation
 
-def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=6,TEeff = 96e-3,fov=256e-3,pe_order_label='TD',is_horizontal_pe = False, R=1,TE1=12e-3):
+    :param plot: plot sequence using seq.plot
+    :param write_seq: write .seq file
+    :param seq_filename: selected seq_filename
+    :param n_echo: Echo train length
+    :param Ny: resolution in y direction
+    :param Nx: resolution in x direction
+    :param TEeff: goal TE to acquire the center line of k-space
+    :param fov: field of view
+    :param pe_order_label: Top-Down (TD) or Center-Out (CO)
+    :param direction: horizontal or vertical
+    :param R: undersample factor, default is 1
+    :param TE1: first echo time, defines with TEeff the echo to acquire the center line of k-space
+    :param TR: repetition time
+    :param shift: whether to shift pe_order to match TEeff value or not (it is a boolean - False by default)
+    :return:
+    sequence file
+    pe_order - for later use in simulation
+    """
+    
     # ======
     # SETUP
     # ======
@@ -14,7 +35,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     system = pp.Opts(max_grad=32, grad_unit='mT/m', max_slew=130, slew_unit='T/m/s', rf_ringdown_time=100e-6,
                  rf_dead_time=100e-6, adc_dead_time=10e-6)
 
-    if is_horizontal_pe:
+    if direction=='vertical':
         fe = 'x'
         pe = 'y'
     else:
@@ -128,10 +149,11 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     # Phase-encoding
     Ny_acq = Ny // R
     n_ex = math.floor(Ny_acq / n_echo)
-
     if pe_order_label=='TD': # Top-Down order
         pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
         pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+        if shift:
+            pe_order = np.roll(pe_order, round(n_echo/2)+round(TEeff/TE1)-1,axis=0)
     elif pe_order_label=='CO': # Center-Out order
         if R==2:
             if TE1 != None:
@@ -214,8 +236,8 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
                     m += 1
                 pe_order[:, s] = seq0
 
-    pe_order = np.array(pe_order, dtype=int)
-    np.save('pe_order_used.npy', pe_order)
+    #pe_order = np.array(pe_order, dtype=int)
+    #np.save('pe_order_used.npy', pe_order)
 
     phase_areas = pe_order * delta_k
 
@@ -323,7 +345,7 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
 
     print(f"ESP is {int(t_ref*1e3)} ms")
     TE_train = t_ex + n_echo * t_ref + t_end
-    TR = 4000e-3
+    TR = TR
     TR_fill = (TR - n_slices * TE_train) / n_slices
     # Round to gradient raster
     TR_fill = system.grad_raster_time * np.round(TR_fill / system.grad_raster_time)
@@ -411,12 +433,10 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     if write_seq:
         seq.write(seq_filename)
 
-    return seq, pe_order, t_ref, TR
+    return seq, pe_order
 
 
 if __name__ == '__main__':
-    seqfilename = "TSE_ETL32_TEeff96ms_ESP12ms_fov220_interleaved_co_TR4s.seq"
-    _,pe_order,t_ref,TR=TSE_seq(plot=True, write_seq=True, seq_filename=seqfilename,n_echo=32, Ny=128, Nx=128,TEeff = 96e-3,fov=220e-3,pe_order_label='CO',is_horizontal_pe = True, R = 1,TE1=12e-3)
-    print(t_ref)
-    print(TR)
+    seqfilename = "test.seq"
+    _,pe_order=TSE_seq(plot=True, write_seq=True, seq_filename=seqfilename,n_echo=16, Ny=128, Nx=128,TEeff = 96e-3,fov=200e-3,pe_order_label='TD',direction = "vertical", R = 1,TE1=12e-3,TR=3,shift=False)
     print(pe_order)

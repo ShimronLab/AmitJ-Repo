@@ -1,153 +1,138 @@
 import os
-import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import MRzeroCore as mr0
 from TSE_seq_applied_to_PDG_sim import TSE_seq
+from plot_kspace import plot_log_kspace_image
 
+def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filename, plot_kspace_traj=False,pe_order_label='TD',direction_label = 'vertical',shift=False):
+    """
+    Purpose:
+    1. Create TSE sequence file
+    2. Run PDG simulation on a selected slice from brainweb phantom
+    3. Do recon using IFFT
+    4. Save the recon image and its log magnitude k-space
 
-def PDG_sim(filepath, Nx, Ny, TE, n_echo, fov, output_dir, seq_filename, plot_kspace_traj=False,pe_order_label='TD',is_horizontal_pe = False):
-    # Inputs:
-    # Brain Phantom simData type (a single slice) ready for PDG simulation: data
-    # Phantom matrix shape: Nx,Ny
-    # Echo time: TE
-    # fov: field of view
-    # output_dir - an output directory for the reconstruction image and kspace - make the name informative
-    # seq_filename - sequence's filename - make it informative and uniqe if needed
-    # plot_kspace_traj - True if want to see kspace trajectory and save it as an image: False by default
+    Inputs:
+    filepath - Brain Phantom .npz file of one subject
+    output_dir - directory to store recon and k-space
+    Nx, Ny - resolution
+    n_echo - echo train length (ETL)
+    fov - field of view
+    TEeff - effective TE for T2 contrast
+    seq_filename - sequence's filename - make it informative and unique if needed - same name as an existing .seq file will change the former file
+    plot_kspace_traj - True if you want to see k-space trajectory and save it as an image: False by default
+    pe_order label - Top-Down (TD) or Center-Out (CO)
+    direction_label - vertical or horizontal
+    shift - to match center line acquisition at TEeff. False by default
 
-    # Outputs:
-    # Reconstructed image using fft: recon
-    # kspace: ksp
-    os.makedirs('data',exist_ok=True)
-    os.makedirs(output_dir, exist_ok=True)
+    Outputs:
+    Reconstructed image using IFFT
+    k-space
+    """
 
+    # Extract center slice and create a sim data object for the simulation
     phantom = mr0.VoxelGridPhantom.brainweb(filepath)
     phantom = phantom.interpolate(Nx, Ny, (phantom.PD).shape[2]).slices([(phantom.PD).shape[2]//2]) # Choosing the middle slice
     data = phantom.build()
 
-    if os.path.exists(seq_filename):
-        print("seq file already exists, overriding it")
-    TSE_seq(plot=True, write_seq=True, seq_filename=seq_filename, TE=TE, n_echo=n_echo, Ny=Ny, Nx=Nx,fov=fov,pe_order_label=pe_order_label,is_horizontal_pe = False)
+    # Generate TSE sequence file
+    _,pe_order,_ = TSE_seq(
+    plot=False,write_seq=True,seq_filename=seq_filename,
+    Nx=Nx, Ny=Ny, n_echo=n_echo, fov=fov,TE1=TE1, TR=TR, TEeff=TEeff,
+    pe_order_label=pe_order_label,  # "CO" (CenterOut) or "TD" (TopDown)
+    direction=direction_label,  # "horizontal" (RO=x, PE=y) or "vertical" (RO=y, PE=x)
+    shift=shift # True to fit for TEeff for T2 contrast
+)
 
     seq = mr0.Sequence.import_file(seq_filename)
     if plot_kspace_traj:
         plt.figure(figsize=(6, 6))
         seq.plot_kspace_trajectory()
-        traj_path = os.path.join(output_dir, f"kspace_traj_TE{int(TE * 1e3)}ms.png")
-        # plt.savefig(traj_path)
-        plt.close()
-        
-    n_ex = Ny // n_echo
+        traj_path = os.path.join(output_dir, f"kspace_traj_TE{int(TE1 * 1e3)}ms.png")
+        plt.savefig(traj_path)
+        plt.show()
 
     # Compute and execute the simulation graph
-    graph = mr0.compute_graph(seq, data, 200, 1e-3)
+    graph = mr0.compute_graph(seq, data, 200, 1e-5)
     signal = mr0.execute_graph(graph, seq, data)
-    if is_horizontal_pe:
+
+    n_ex = Ny // n_echo #Calculate the number of shots
+
+    # create k-space matrix and reshape the signal according to the direction_label
+    if direction_label=='horizontal':
         signal = signal.view(n_ex, n_echo, Ny)
-    else:
-        signal = signal.view(n_ex, n_echo, Nx)
-
-    # # Build pe_order exactly as in TSE_seq.py
-    #old
-    # pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
-    # if divmod(n_echo, 2)[1] == 0:
-    #     pe_steps = np.roll(pe_steps, [0, int(-np.round(n_ex / 2))])
-    # pe_order = pe_steps.reshape((n_ex, n_echo), order='F').T
-
-    if pe_order_label=='TD': # Top-Down order
-        pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
-        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
-
-    elif pe_order_label=='CO': # Center-Out order
-        center = n_echo * n_ex // 2
-        offsets = np.arange(center)
-        pe_steps = np.empty(n_echo * n_ex, dtype=int)
-        pe_steps[::2] = center + offsets  # even indices: 0, +1, +2, ...
-        pe_steps[1::2] = center - offsets - 1  # odd indices: -1, -2, -3, ...
-        pe_steps = pe_steps - center  # shift to be centered around 0
-
-        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
-
-    delta_k = 1 / fov
-    phase_areas = pe_order * delta_k
-    #
-    if is_horizontal_pe:
         ksp = torch.zeros(Nx, Ny, dtype=signal.dtype)
-    else:
+    elif direction_label=='vertical':
+        signal = signal.view(n_ex, n_echo, Nx)
         ksp = torch.zeros(Ny, Nx, dtype=signal.dtype)
 
     # Fill in k-space line-by-line
-    if pe_order_label=='TD':
-        for ex in range(n_ex):
-            for e in range(n_echo):
-                ky_f = phase_areas[e, ex] # Physical phase encoding value
-                if is_horizontal_pe:
-                    kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
-                    if 0 <= kx < Nx:
-                        ksp[:, kx] = signal[ex, e, :]
-                else: #original vertical
-                    ky = int(round(ky_f / delta_k)) + Ny // 2 # Convert to array index
-                    if 0 <= ky < Ny:
-                        #  Each (ex, e) corresponds to one k-space line at a certain ky-position
-                        ksp[ky, :] = signal[ex, e, :]
-    elif pe_order_label=='CO':
-        filled_lines = np.zeros(Nx if is_horizontal_pe else Ny, dtype=bool)
+    for ex in range(n_ex):
+        for e in range(n_echo):
+            idx = int(pe_order[e,ex])
+            if direction_label=='horizontal':
+                kx = idx + Nx // 2
+                if 0 <= kx < Nx:
+                    ksp[:, kx] = signal[ex, e, :]
+            elif direction_label=='vertical':
+                ky = idx + Ny//2
+                if 0 <= ky < Ny:
+                    ksp[ky, :] = signal[ex, e, :] #  Each (ex, e) corresponds to one k-space line at a certain ky-position
 
-        for ex in range(n_ex):
-            for e in range(n_echo):
-                if is_horizontal_pe:
-                    kx = int(round(phase_areas[e, ex] / delta_k)) + Nx // 2
-                    if 0 <= kx < Nx and not filled_lines[kx]:
-                        ksp[:, kx] = signal[ex, e, :]
-                        filled_lines[kx] = True
-                else:
-                    ky = int(round(phase_areas[e, ex] / delta_k)) + Ny // 2
-                    if 0 <= ky < Ny and not filled_lines[ky]:
-                        ksp[ky, :] = signal[ex, e, :]
-                        filled_lines[ky] = True
+    # Reconstruct using IFFT
+    reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp)))
 
-    # Reconstruct using ifft
-    if is_horizontal_pe:
-        reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp.T)))
-    else:
-        reco = torch.fft.fftshift(torch.fft.ifft2(torch.fft.fftshift(ksp)))
+    # Plot and Save recon
+    seq_root = os.path.splitext(os.path.basename(seq_filename))[0]
+    img_filename = f"{seq_root}_recon.png"
+    img_path = os.path.join(output_dir, img_filename)
 
-    # Save image
     fig_img = plt.figure()
     plt.imshow(reco.abs().numpy(), cmap="gray")
-    title = f"Reconstructed Image for Turbo Factor={n_echo}, {'Horizontal' if is_horizontal_pe else 'Vertical'}"
-    plt.title(title)
+    plt.title(f"Reconstructed (ETL={n_echo}, {'Horiz' if direction_label=='horizontal' else 'Vert'}{', shift' if shift else ''}")
 
     info = (
-        f"TE = {TE * 1e3:.0f} ms\n"
-        f"TR = 2 s\n"
-        f"Turbo Factor = {n_echo}\n"
-        f"PE_order = {pe_order_label}"
+        f"PE_order = {pe_order_label}\n"
+        f"TEeff = {TEeff * 1e3:.0f} ms\n"
+        f"TR = {TR} s\n"
+        f"Shifted: {'yes' if shift else 'no'}"
     )
 
-    # Add text in top-left corner (adjust offset for padding)
-    plt.text(
-        2,  # X near left edge
-        5,  # Y near top
-        info,
-        fontsize=12,
-        color='white',
-        ha='left',  # align text to the left edge
-        va='top'  # align top of text block to y=5
-    )
-
+    # Add text in top-left corner
+    plt.text(2,3, info, fontsize=12, color='white', ha='left', va='top')
     plt.axis('off')
     plt.tight_layout()
-    plt.show()
-
-
-    img_path = os.path.join(output_dir, f"{title}.png")
-    fig_img.savefig(img_path)
+    fig_img.savefig(img_path, dpi=300)
     plt.close(fig_img)
-    torch.save(ksp, f'ksp_{seq_filename}.pt')
-    np.savez(os.path.join(output_dir, f"reco_TF{n_echo}_TE{int(TE * 1e3)}ms_{pe_order_label}.npz"), image=reco.abs().numpy())
+
+    # Save k-space
+    ksp_path = os.path.join(output_dir, f"ksp_{seq_root}.pt")
+    torch.save(ksp, ksp_path)
+
+    # Plot k-space
+    plot_log_kspace_image(ksp_path)
 
     return reco,ksp
 
-recon, ksp = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=128, Ny=128, TE=48e-3, n_echo= 32, fov=256e-3, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=True,pe_order_label='TD',is_horizontal_pe = False)
+base_path = 'new_data'
+outdir = os.path.join(base_path, 'TSE_TD_test')
+filepath = os.path.expanduser("~/AmitProject/data/brainweb/subject04_3T.npz")
+n_echos = [16,32,64]
+pe_order_label = 'TD'
+Nx,Ny=256,256
+TEeff=96e-3
+fov = 220e-3
+directions = ['vertical', 'horizontal']
+TR = 3
+TE1=12e-3
+shifts = [True, False]
+
+os.makedirs(base_path, exist_ok=True)
+os.makedirs(outdir, exist_ok=True)
+
+for ETL in n_echos:
+    for direction in directions:
+        for s in shifts:
+            seq_filename = f'ETL{ETL}_TEeff{int(TEeff * 1e3)}ms_{pe_order_label}_{direction}_TR{TR}s_shift_{s}.seq'
+            recon, ksp = PDG_sim(filepath=filepath, Nx=Nx, Ny=Ny, n_echo= ETL, fov=fov, TEeff=TEeff, TR=3,TE1=TE1, output_dir=outdir, seq_filename=seq_filename, plot_kspace_traj=False,pe_order_label=pe_order_label,direction_label = direction,shift=s)

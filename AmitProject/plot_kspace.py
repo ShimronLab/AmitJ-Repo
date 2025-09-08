@@ -7,9 +7,6 @@ def plot_log_kspace_image(file_path):
     Loads 2D k-space data from a .pt file, calculates its log magnitude,
     and plots it as an image with a colorbar, suitable for MRI k-space visualization.
 
-    Args:
-        file_path (str): The path to the .pt file containing the k-space tensor.
-                         Assumes the tensor is complex and 2D (e.g., [rows, cols]).
     """
     try:
         # Load the tensor from the .pt file
@@ -42,7 +39,7 @@ def plot_log_kspace_image(file_path):
         # Use 'gray' colormap as in your example, or 'viridis', 'jet', etc., for different visual.
         # 'extent' can be used to label axes in physical units if known.
         plt.imshow(log_magnitude, cmap='gray', origin='lower')
-        plt.title('Log K-space Magnitude Display')
+        plt.title('Log k-space Magnitude Display')
         plt.tight_layout()
         plt.show()
 
