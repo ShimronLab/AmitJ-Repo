@@ -16,8 +16,8 @@ horizontal = True
 vertical = False
 R = 4 #accelation factor
 
-_, ksp_h = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=Nx, Ny=Ny, TE=TE, n_echo= n_echo, fov=fov, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=False, pe_order_label=pe_order_label,is_horizontal_pe=horizontal)
-_, ksp_v = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=Nx, Ny=Ny, TE=TE, n_echo= n_echo, fov=fov, output_dir='data/TSE_TF32_TE12', seq_filename='TSE_Vert_TopDown.seq', plot_kspace_traj=False,pe_order_label=pe_order_label,is_horizontal_pe=vertical)
+_, ksp_h = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=Nx, Ny=Ny, TE=TE, n_echo= n_echo, fov=fov, output_dir='../data/TSE_TF32_TE12', seq_filename='TSE_Horiz_TopDown.seq', plot_kspace_traj=False, pe_order_label=pe_order_label, is_horizontal_pe=horizontal)
+_, ksp_v = PDG_sim(filepath="data/output/brainweb/subject05_3T.npz", Nx=Nx, Ny=Ny, TE=TE, n_echo= n_echo, fov=fov, output_dir='../data/TSE_TF32_TE12', seq_filename='TSE_Vert_TopDown.seq', plot_kspace_traj=False, pe_order_label=pe_order_label, is_horizontal_pe=vertical)
 # old
 # pe_steps = np.arange(1, n_echo * n_ex + 1) - 0.5 * n_echo * n_ex - 1
 # if divmod(n_echo, 2)[1] == 0:

@@ -35,27 +35,12 @@ _, pe_order, t_ref, TR = TSE_seq(plot=True, write_seq=True, seq_filename="TSE_ET
                              TEeff=96e-3, fov=220e-3, pe_order_label='CO', is_horizontal_pe=True, R=1, TE1=12e-3)
 # seq0.plot_kspace_trajectory()
 seq0 = mr0.Sequence.import_file("TSE_ETL32_TEeff96ms_ESP12ms.seq")
+
 # Simulate the sequence
 graph = mr0.compute_graph(seq0, obj_p, 1, 1e-5)
 signal,mag_adc_raw = mr0.execute_graph(graph, seq0, obj_p, return_mag_adc=True, min_latent_signal=1e-5,min_emitted_signal=1e-5)
 mag_adc = [rep for rep in mag_adc_raw if len(rep) > 0]
 # print([len(rep) for rep in mag_adc], 'total=', sum(len(rep) for rep in mag_adc))
-#
-# magnitudes = []
-# t_abs= []
-# for s, rep in enumerate(mag_adc):
-#         t0 = s * TR #base of each TR
-#         for e, echo in enumerate(rep):
-#                 mag = echo.abs()[Nread//2].item()  # mean magnitude across image
-#                 magnitudes.append(mag)
-#                 t_abs.append((t0 + TE1 + e * t_ref)*1e3)  # ESP = t_ref, e is echo number in each shot
-#
-# plt.plot(t_abs, magnitudes, 'o-')
-# plt.xlabel("Echo time [ms]")
-# plt.ylabel("Mean |Mxy| at ADC")
-# plt.title("Measured transverse magnetization")
-# plt.grid(True)
-# plt.show()
 
 echoes = [echo for rep in mag_adc for echo in rep]   # length K (=128)
 S = [e.abs().mean().item() for e in echoes]
@@ -64,7 +49,6 @@ K = len(S)
 n_shots = K // n_echo
 
 ESP = float(t_ref)     # 0.012 s
-
 idx       = np.arange(K)
 shot_idx  = idx // n_echo
 echo_idx  = idx %  n_echo

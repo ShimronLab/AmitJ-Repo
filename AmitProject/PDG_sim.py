@@ -3,7 +3,7 @@ import torch
 import matplotlib.pyplot as plt
 import MRzeroCore as mr0
 from TSE_seq_applied_to_PDG_sim import TSE_seq
-from plot_kspace import plot_log_kspace_image
+from plot_recon_and_kspace import plot_log_kspace_and_recon
 
 def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filename, plot_kspace_traj=False,pe_order_label='TD',direction_label = 'vertical',shift=False):
     """
@@ -37,15 +37,15 @@ def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filena
     data = phantom.build()
 
     # Generate TSE sequence file
-    _,pe_order,_ = TSE_seq(
+    _,pe_order = TSE_seq(seq_path = os.path.join(base_path, 'sequences'),
     plot=False,write_seq=True,seq_filename=seq_filename,
     Nx=Nx, Ny=Ny, n_echo=n_echo, fov=fov,TE1=TE1, TR=TR, TEeff=TEeff,
     pe_order_label=pe_order_label,  # "CO" (CenterOut) or "TD" (TopDown)
     direction=direction_label,  # "horizontal" (RO=x, PE=y) or "vertical" (RO=y, PE=x)
     shift=shift # True to fit for TEeff for T2 contrast
 )
-
-    seq = mr0.Sequence.import_file(seq_filename)
+    seq_full_path = os.path.join(base_path, 'sequences', seq_filename)
+    seq = mr0.Sequence.import_file(seq_full_path)
     if plot_kspace_traj:
         plt.figure(figsize=(6, 6))
         seq.plot_kspace_trajectory()
@@ -90,10 +90,9 @@ def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filena
 
     fig_img = plt.figure()
     plt.imshow(reco.abs().numpy(), cmap="gray")
-    plt.title(f"Reconstructed (ETL={n_echo}, {'Horiz' if direction_label=='horizontal' else 'Vert'}{', shift' if shift else ''}")
+    plt.title(f"ETL={n_echo}, {'Horiz' if direction_label=='horizontal' else 'Vert'}{', shift' if shift else ''}, PE_order = {pe_order_label}")
 
     info = (
-        f"PE_order = {pe_order_label}\n"
         f"TEeff = {TEeff * 1e3:.0f} ms\n"
         f"TR = {TR} s\n"
         f"Shifted: {'yes' if shift else 'no'}"
@@ -107,18 +106,23 @@ def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filena
     plt.close(fig_img)
 
     # Save k-space
-    ksp_path = os.path.join(output_dir, f"ksp_{seq_root}.pt")
+    ksp_path = os.path.join(ksp_filepath, f"ksp_{seq_root}.pt")
     torch.save(ksp, ksp_path)
 
+    output_dir_image_and_kspace = os.path.join(base_path,'ksp_and_image_figs')
     # Plot k-space
-    plot_log_kspace_image(ksp_path)
+    plot_log_kspace_and_recon(output_dir_image_and_kspace,seq_root,ksp_path,n_echo,pe_order_label,direction_label,shift)
 
     return reco,ksp
 
+# Set Params and Folder Names
 base_path = 'new_data'
-outdir = os.path.join(base_path, 'TSE_TD_test')
+outdir = os.path.join(base_path, 'recons')
+ksp_and_image_path = os.path.join(base_path, 'ksp_and_image_figs')
+ksp_filepath = os.path.join(base_path, 'ksp_tensors')
+seq_path = os.path.join(base_path, 'sequences')
 filepath = os.path.expanduser("~/AmitProject/data/brainweb/subject04_3T.npz")
-n_echos = [16,32,64]
+n_echos = [16,32,64,128]
 pe_order_label = 'TD'
 Nx,Ny=256,256
 TEeff=96e-3
@@ -128,8 +132,12 @@ TR = 3
 TE1=12e-3
 shifts = [True, False]
 
+# Create Directories
 os.makedirs(base_path, exist_ok=True)
 os.makedirs(outdir, exist_ok=True)
+os.makedirs(ksp_and_image_path, exist_ok=True)
+os.makedirs(ksp_filepath, exist_ok=True)
+os.makedirs(seq_path, exist_ok=True)
 
 for ETL in n_echos:
     for direction in directions:

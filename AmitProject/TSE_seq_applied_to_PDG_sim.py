@@ -3,7 +3,7 @@ import warnings
 import numpy as np
 import pypulseq as pp
 
-def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=64,TEeff = 96e-3,fov=256e-3,pe_order_label='TD',direction='vertical', R=1,TE1=12e-3,TR=2,shift=False):
+def TSE_seq(seq_path = 'test', plot: bool = False, write_seq: bool = False, seq_filename: str = 'TSE_SEQ.seq',n_echo=16, Ny=64, Nx=64,TEeff = 96e-3,fov=256e-3,pe_order_label='TD',direction='vertical', R=1,TE1=12e-3,TR=2,shift=False):
     """
     The goal of this function is to create a TSE sequence file to run MRzero simulation
 
@@ -431,12 +431,13 @@ def TSE_seq(plot: bool = False, write_seq: bool = False, seq_filename: str = 'TS
     # WRITE .SEQ
     # =========
     if write_seq:
-        seq.write(seq_filename)
+        full_path = f"{seq_path}/{seq_filename}"
+        seq.write(full_path)
 
     return seq, pe_order
 
 
 if __name__ == '__main__':
     seqfilename = "test.seq"
-    _,pe_order=TSE_seq(plot=True, write_seq=True, seq_filename=seqfilename,n_echo=16, Ny=128, Nx=128,TEeff = 96e-3,fov=200e-3,pe_order_label='TD',direction = "vertical", R = 1,TE1=12e-3,TR=3,shift=False)
+    _,pe_order=TSE_seq(seq_path='old',plot=True, write_seq=True, seq_filename=seqfilename,n_echo=16, Ny=256, Nx=256,TEeff = 96e-3,fov=220e-3,pe_order_label='TD',direction = "vertical", R = 1,TE1=12e-3,TR=3,shift=True)
     print(pe_order)
