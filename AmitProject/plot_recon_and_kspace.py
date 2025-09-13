@@ -25,11 +25,11 @@ def plot_log_kspace_and_recon(output_dir,seq_root,file_path,n_echo,pe_order_labe
         fig.subplots_adjust(wspace=-0.7)  # top leaves room for titles
 
         # Left: recon image (swapped order)
-        im0 = axes[0].imshow(reco.abs().numpy(), cmap="gray", origin="lower")
+        im0 = axes[0].imshow(reco.abs().numpy(), cmap="gray")
         axes[0].axis("off")
 
         # Right: k-space log magnitude (swapped order)
-        im1 = axes[1].imshow(log_magnitude, cmap="gray", origin="lower")
+        im1 = axes[1].imshow(log_magnitude, cmap="gray")
         axes[1].axis("off")
 
         # Global title + smaller subtitle stacked (no overlap with axes titles)
