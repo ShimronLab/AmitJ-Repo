@@ -59,13 +59,8 @@ def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filena
 
     n_ex = Ny // n_echo #Calculate the number of shots
 
-    # create k-space matrix and reshape the signal according to the direction_label
-    if direction_label=='horizontal':
-        signal = signal.view(n_ex, n_echo, Ny)
-        ksp = torch.zeros(Nx, Ny, dtype=signal.dtype)
-    elif direction_label=='vertical':
-        signal = signal.view(n_ex, n_echo, Nx)
-        ksp = torch.zeros(Ny, Nx, dtype=signal.dtype)
+    signal = signal.view(n_ex, n_echo, Nx)
+    ksp = torch.zeros(Ny, Nx, dtype=signal.dtype)
 
     # Fill in k-space line-by-line
     for ex in range(n_ex):
@@ -90,7 +85,7 @@ def PDG_sim(filepath,output_dir, Nx, Ny, n_echo, fov, TEeff, TR, TE1, seq_filena
 
     fig_img = plt.figure()
     plt.imshow(reco.abs().numpy(), cmap="gray")
-    plt.title(f"ETL={n_echo}, {'Horiz' if direction_label=='horizontal' else 'Vert'}{', shift' if shift else ''}, PE_order = {pe_order_label}")
+    plt.title(f"ETL={n_echo}, {'Horiz' if direction_label=='horizontal' else 'Vert'}, PE order = {pe_order_label}")
 
     info = (
         f"TEeff = {TEeff * 1e3:.0f} ms\n"
@@ -122,14 +117,15 @@ ksp_and_image_path = os.path.join(base_path, 'ksp_and_image_figs')
 ksp_filepath = os.path.join(base_path, 'ksp_tensors')
 seq_path = os.path.join(base_path, 'sequences')
 filepath = os.path.expanduser("~/AmitProject/data/brainweb/subject04_3T.npz")
-n_echos = [16,32,64,128]
-pe_order_label = 'TD'
+
 Nx,Ny=256,256
 TEeff=96e-3
 fov = 220e-3
-directions = ['vertical', 'horizontal']
 TR = 3
 TE1=12e-3
+n_echos = [16,32,64,128]
+directions = ['vertical', 'horizontal']
+pe_order_labels = ['CO','TD']
 shifts = [True, False]
 
 # Create Directories
@@ -140,7 +136,8 @@ os.makedirs(ksp_filepath, exist_ok=True)
 os.makedirs(seq_path, exist_ok=True)
 
 for ETL in n_echos:
-    for direction in directions:
-        for s in shifts:
-            seq_filename = f'ETL{ETL}_TEeff{int(TEeff * 1e3)}ms_{pe_order_label}_{direction}_TR{TR}s_shift_{s}.seq'
-            recon, ksp = PDG_sim(filepath=filepath, Nx=Nx, Ny=Ny, n_echo= ETL, fov=fov, TEeff=TEeff, TR=3,TE1=TE1, output_dir=outdir, seq_filename=seq_filename, plot_kspace_traj=False,pe_order_label=pe_order_label,direction_label = direction,shift=s)
+    for pe_order_label in pe_order_labels:
+        for direction in directions:
+            for s in shifts:
+                seq_filename = f'ETL{ETL}_TEeff{int(TEeff * 1e3)}ms_{pe_order_label}_{direction}_TR{TR}s_shift_{s}.seq'
+                recon, ksp = PDG_sim(filepath=filepath, Nx=Nx, Ny=Ny, n_echo= ETL, fov=fov, TEeff=TEeff, TR=3,TE1=TE1, output_dir=outdir, seq_filename=seq_filename, plot_kspace_traj=False,pe_order_label=pe_order_label,direction_label = direction,shift=s)
