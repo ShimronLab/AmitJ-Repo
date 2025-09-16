@@ -48,8 +48,6 @@ def TSE_seq(seq_path = 'test', plot: bool = False, write_seq: bool = False, seq_
     if isinstance(rf_flip, int):
         rf_flip = np.zeros(n_echo) + rf_flip
     slice_thickness = 5e-3
-    #TR = 2000e-3  # Repetition time original in code - changed later to fit with TE_train
-
     sampling_time = 6.4e-3
 
     readout_time = sampling_time + 2 * system.adc_dead_time
@@ -139,7 +137,6 @@ def TSE_seq(seq_path = 'test', plot: bool = False, write_seq: bool = False, seq_
         area=gr_acq.area * fsp_r, #k_width
         duration=t_sp,
         rise_time=dG,
-
     )
 
     agr_spr = gr_spr.area
@@ -152,75 +149,17 @@ def TSE_seq(seq_path = 'test', plot: bool = False, write_seq: bool = False, seq_
     if pe_order_label=='TD': # Top-Down order
         pe_steps = np.linspace(-n_ex * n_echo // 2, n_ex * n_echo // 2 - 1, n_ex * n_echo, dtype=int)
         pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+        target_echo_index = int(round(TEeff / TE1))
         if shift:
-            pe_order = np.roll(pe_order, round(n_echo/2)+round(TEeff/TE1)-1,axis=0)
+            pe_order = np.roll(pe_order, round(n_echo/2)+target_echo_index-1,axis=0)
 
     elif pe_order_label=='CO': # Center-Out order
         pe_steps = np.array([x for k in range(n_ex * n_echo // 2 +1) for x in ([0] if k == 0 else [-k, k])][:n_ex * n_echo])
-        pe_order = pe_steps.reshape((n_echo, n_ex), order='C')
+        pe_order = pe_steps.reshape((n_echo, n_ex), order='F')
         if shift:
             target_echo_index = int(round(TEeff/TE1))
             for i in range(pe_order.shape[1]):  # loop over shots
                 pe_order[:, i] = np.roll(pe_order[:, i], target_echo_index - 1, axis=0)
-            # option 1 - interleaved center out with roll of first 9 echos in every shot
-            # k_all = np.arange(-Ny_acq // 2, Ny_acq // 2,dtype=int)
-            # pe_order = np.zeros((n_echo, n_ex), dtype=int)
-            # for s in range(n_ex):
-            #     # all indices with residue s mod 4
-            #     subs = [k for k in k_all if (k - s) % n_ex == 0]
-            #     # anchor near center: 0 for shot0, +1,+2,+3 for shots 1..3
-            #     anchor = 0 if s == 0 else s
-            #
-            #     # center-out around anchor with ±4 steps
-            #     seq1 = [anchor]
-            #     step = 1
-            #     while len(seq1) < n_echo:
-            #         for d in (n_ex * step, -n_ex * step):
-            #             cand = anchor + d
-            #             if cand in subs:
-            #                 seq1.append(cand)
-            #                 if len(seq1) == n_echo:
-            #                     break
-            #         step += 1
-            #
-            # # rotate so anchor is at target_idx
-            #     rot = (seq1.index(anchor) - target_echo_index) % n_echo
-            #     seq1 = seq1[rot:] + seq1[:rot]
-            #     pe_order[:, s] = seq1
-            # option 2 - center out not interleaved with flip of first 9 echos in first shot only!
-            # half = Ny_acq // 2
-            # offsets = np.arange(1, half + 1)
-            # pe_steps = np.empty(Ny, dtype=int)
-            # pe_steps[0] = 0
-            # pe_steps[1::2] = -offsets
-            # pe_steps[2::2] = offsets[:-1]
-            # pe_steps_shifted = pe_steps.copy()
-            # pe_steps_shifted[:target_echo_index] = pe_steps_shifted[:target_echo_index][::-1]
-            # pe_order = pe_steps_shifted.reshape((n_echo, n_ex), order='F')
-
-            #option 3 - most favorite interleaved center out with flip of first 9 echos in every shot
-            # shots = 4
-            # step = 4
-            # kmin, kmax = -Ny // 2, Ny // 2 - 1
-            #
-            # pe_order = np.zeros((n_echo, shots), dtype=int)
-            # for s in range(shots):
-            #     a = s  # anchor offset: 0,1,2,3
-            #     seq0 = []
-            #     # 1) start with ±4, ±8, … up to ±16
-            #     for m in range(1, (target_echo_index) // 2 + 1):
-            #         if a + m * step <= kmax: seq0.append(a + m * step)
-            #         if a - m * step >= kmin: seq0.append(a - m * step)
-            #     # 2) put the center line
-            #     seq0.append(a)
-            #     # 3) continue outward
-            #     m = (target_echo_index) // 2 + 1
-            #     while len(seq0) < n_echo:
-            #         if a + m * step <= kmax: seq0.append(a + m * step)
-            #         if len(seq0) == n_echo: break
-            #         if a - m * step >= kmin: seq0.append(a - m * step)
-            #         m += 1
-            #     pe_order[:, s] = seq0
 
     phase_areas = pe_order * delta_k
 
@@ -422,5 +361,5 @@ def TSE_seq(seq_path = 'test', plot: bool = False, write_seq: bool = False, seq_
 
 if __name__ == '__main__':
     seqfilename = "test.seq"
-    _,pe_order=TSE_seq(seq_path='old',plot=True, write_seq=True, seq_filename=seqfilename,n_echo=16, Ny=256, Nx=256,TEeff = 96e-3,fov=220e-3,pe_order_label='CO',direction = "vertical", R = 1,TE1=12e-3,TR=3,shift=True)
+    _,pe_order=TSE_seq(seq_path='old',plot=True, write_seq=True, seq_filename=seqfilename,n_echo=32, Ny=256, Nx=256,TEeff = 96e-3,fov=220e-3,pe_order_label='CO',direction = "vertical", R = 1,TE1=12e-3,TR=3,shift=True)
     print(pe_order)
